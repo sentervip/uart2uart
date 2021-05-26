@@ -25,11 +25,11 @@ void USART1_IRQHandler(void)
         Uart1ProcessTag.RxBuf[Uart1ProcessTag.RxCnt++] = USART_ReceiveData(USART1);  
         
          //is head
-        if(Uart1ProcessTag.RxBuf[FI_HEAD] != FIX_HEAD){
+        if(Uart1ProcessTag.RxBuf[FR_HEAD] != PRI_HEAD){
             Uart1ProcessTag.RxCnt = 0; //reset and throw it     
          //rx complement?
-        }else if(Uart1ProcessTag.RxCnt >=FI_CMD &&
-                  Uart1ProcessTag.RxCnt == Uart1ProcessTag.RxBuf[FI_LEN] +FIX_OFFSET){
+        }else if(Uart1ProcessTag.RxCnt >= FR_CMD &&
+                  Uart1ProcessTag.RxCnt == Uart1ProcessTag.RxBuf[FR_LEN] +FIX_OFFSET){
             Uart1ProcessTag.RxCmplet = 1;
             return;
         }else{
@@ -53,7 +53,7 @@ void USART2_IRQHandler(void)
                 Uart2ProcessTag.RxCnt = 0; //reset and throw it     
                 
             //rx complement?
-            }else if(Uart2ProcessTag.RxCnt >FR_CMD && Uart2ProcessTag.RxCnt == (Uart2ProcessTag.RxBuf[FR_LEN] +FIX_OFFSET+2)){
+            }else if(Uart2ProcessTag.RxCnt > FR_CMD && Uart2ProcessTag.RxCnt == (Uart2ProcessTag.RxBuf[FI_PLLSB] +EPC_LEN_OFFSET)){
                // if(Uart2ProcessTag.RxBuf[FR_STA1] + Uart2ProcessTag.RxBuf[FR_STA2+1] != 0){                 
                //     memset(Uart2ProcessTag.RxBuf, 0, Uart2ProcessTag.RxCnt);
                //     Uart1ProcessTag.RxCnt = 0;

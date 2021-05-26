@@ -25,10 +25,11 @@ struct  TagProcessStruct    TagProcessTag;
 
 void test(void)
 {
-    u8  tx[12]={0xFF, 0x04, 0x22, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03, 0x78, 0xAB};
-    u16 val;
+    u8  tx[12]={0xBB, 0x00, 0x27, 0x00, 0x03, 0x22, 0x0,0x03,0x4F, 0x7E};//{0xFF, 0x04, 0x22, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03, 0x78, 0xAB};
+    //u8  tx[]={0xBB, 0x00, 0x22, 0x00, 0x00, 0x22, 0x7E};
+		u16 val;
 
-    val = CalcCRC(&tx[1],8);
+    val = CalcCRC(&tx[1],7);
     tx[9] = val>>8;
     tx[10] = val&0xff;
     uart1_send_buff(tx, 12);  
@@ -42,7 +43,7 @@ RCC_Configuration();
 NVIC_Configuration();
 TIM2_ConfigRun();
 TIM_Cmd(TIM2, DISABLE);
-uart1_init(9600);
+uart1_init(115200);
 uart2_init(115200);
 
 memset((char*)&Uart1ProcessTag, 0, sizeof(struct  Uart1ProcessStruct ));
@@ -52,6 +53,7 @@ memset((char*)&TagProcessTag, 0, sizeof(struct  TagProcessStruct ));
 TagProcessTag.SysMode = SYS_FORWARD; //for test
 //test();
 uart1_send_char(0x12); // start flag
+uart2_send_char(0x23);
 while(1){
 
 	//uart1 process  ;to pc
@@ -60,21 +62,19 @@ while(1){
    //uart2 process; to reader
    if( TagProcessTag.SysMode == SYS_READING){
         if(Uart2ProcessTag.RxCmplet){       
-            if(Uart2ProcessTag.RxBuf[FR_CMD] == CMD_GET_RESULT){  
+            if(Uart2ProcessTag.RxBuf[FI_TYPE] == CMD_TYPE &&
+						  	Uart2ProcessTag.RxBuf[FI_CMD] == CMD_GET_RESULT){  
                 
                 tagsProcess(Uart2ProcessTag.RxBuf);
                 if(TagProcessTag.SingleNum == 0){ // get tags over
                     
-                    //1 for pc                    
+                    //1 for pc                     
                     RespGetTagOverCmdToPC();                    
                     
                     //2 for reader
-                    ClearReader();
+                    //ClearReader();
                     TagProcessTag.SysMode = SYS_FORWARD;
-                }else{
-                    uart2_send_buff(TxCmd, 8); //get tags go on
                 }
-                TagProcessTag.CurReadCnt++;
             }else{
                 ;//throw it;
                 //uart1_send_buff(Uart2ProcessTag.RxBuf, Uart2ProcessTag.RxCnt);
@@ -90,13 +90,13 @@ while(1){
                 
                 // 1 for reader
                 TagProcessTag.CurReadCnt = 0;
-                TagProcessTag.MaxReadCnt = Uart1ProcessTag.RxBuf[FI_DATA];
+                TagProcessTag.MaxReadCnt = Uart1ProcessTag.RxBuf[FR_DATA];
                 //FF 03 29 00 00 00 F4 22 ;得到盘点结果
-                TxCmd[FI_HEAD] = FIX_HEAD;
-                TxCmd[FI_LEN] = 0x03;
-                TxCmd[FI_CMD] = CMD_GET_RESULT;
-                TxCmd[FI_DATA] = 0;
-                TxCmd[FI_DATA+1] = 0;
+                TxCmd[FR_HEAD] = PRI_HEAD;
+                TxCmd[FR_LEN] = 0x03;
+                TxCmd[FR_CMD] = CMD_GET_RESULT;
+                TxCmd[FR_DATA] = 0;
+                TxCmd[FR_DATA+1] = 0;
                 TxCmd[5] = 0;
                 TxCmd[6] = 0xF4;
                 TxCmd[7] = 0X22;

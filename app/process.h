@@ -6,15 +6,19 @@
 #include "stm32f10x_rcc.h"
  
 //standerr cmd
-#define  FIX_HEAD  0xff
-#define  FIX_OFFSET 0x05
+
+#define  FIX_HEAD  0xBB
+#define  CMD_TYPE  0x02
 #define  CMD_READ  0x22
-#define  CMD_GET_RESULT  0x29
+#define  CMD_GET_RESULT  0x22
 #define  CMD_CLR_RESULT  0x2A
 #define MSG_CRC_INIT 0xFFFF
 #define MSG_CCITT_CRC_POLY 0x1021
+#define FIX_OFFSET  5 // Length of frame = PLMSB>>7+PLLSB+ 7
+#define EPC_LEN_OFFSET  7
 
 //private cmd
+#define  PRI_HEAD  0xff  //private HEAD
 #define  PRI_CMD_READ  0xA0
 #define  PRI_CMD_GET_RESULT  0xA1
 #define  PRI_CMD_CLR_RESULT  0xA2
@@ -25,24 +29,24 @@
 #define  ERROR_EPC_LEN      0xE1
 #define  ERROR_EPC_NUMBER_OVER      0xE2
 
-
+//byte index of frame 27
 typedef enum FrameIndex{
 FI_HEAD=0,
-FI_LEN,
+FI_TYPE,
 FI_CMD,
-FI_DATA,
+FI_PLMSB,//PL MSB
+FI_PLLSB, //PL LSB
+FI_PARA, //parameter
+FI_EPC= 8 // index of epc 	
 }emFrameIndex;
+//byte index of respond frame 27
 typedef enum FrameRespondIndex{
     FR_HEAD=0,
     FR_LEN,
     FR_CMD,
     FR_STA1,
     FR_STA2,
-    FR_DATA,
-    FR_NUBS=7,//tags numbers 2byte
-    FR_TAG_LEN=9, //single tag data length 2byte
-    FR_TAG_DATA=13, //tag1, tag2=tag1+6(crc2+len2+2[34 00])
-    
+    FR_DATA
 }emFrameRespIndex;
 typedef enum SysMode{
     SYS_FORWARD=0,//正常转发状态

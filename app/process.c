@@ -5,7 +5,9 @@
 #include <string.h>
 #include "process.h"
 
-static const u8 ReadCmd0[10] = {0xFF,0x05,0x22,0x00,0x00,0x03,0x03,0x20,0x3B,0xFC};  
+#define QM100
+//static const u8 ReadCmd0[10] = {0xFF,0x05,0x22,0x00,0x00,0x03,0x03,0x20,0x3B,0xFC};  
+static const u8 ReadCmd0[10] = {0xBB, 0x00, 0x27, 0x00, 0x03, 0x22, 0x0,0x03,0x4F, 0x7E};  
 static const u8 ReadCmd1[10] = {0xff,0x05,0x22,0x00,0x00,0x03,0x02,0x58,0x3a,0x84}; 
 static const u8 ReadCmd2[10] = {0xFF,0x05,0x22,0x00,0x00,0x03,0x01,0xF4,0x39,0x28};
 void TIM2_IRQHandler(void)
@@ -86,6 +88,7 @@ void NVIC_Configuration(void)
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
 }
+#ifndef QM100
 /* CRC16   */
 void CRC_calcCrc8(unsigned short int *crcReg, unsigned short int poly, unsigned short int u8Data)
 {
@@ -119,19 +122,31 @@ unsigned short int CalcCRC(unsigned char *buf, unsigned char len)
     }
     return calcCrc;
 }
+#else
+/**
+* for QM100/M100 reader
+* checksum 为type到最后一个指令参数parameter累加和，并只取累加和最低字节LSB
+*/
+unsigned short int CalcCRC(unsigned char *uBuff,unsigned char uBuffLen)
+{
+	unsigned short int uSum = 0;
+	unsigned char i = 0;
+	for(i=0;i<uBuffLen;i++)
+	{
+		uSum += uBuff[i];
+ 		uSum &= 0xFFu;// must &0xffu,否则容易死机
+  }
+	return uSum &=0x00ff;
+}
+#endif
 
 //clr for reader
 void ClearReader(void)
 {
-    u8  tx[5];
-    
- //FF 00 2A 1D 25 ;清空缓存   
-    tx[FI_HEAD] = FIX_HEAD;
-    tx[FI_LEN] = 0;
-    tx[FI_CMD] = 0x2A;
-    tx[3] = 0x1D;
-    tx[4] = 0x25;
-    uart2_send_buff(tx, 5);
+	  TagProcessTag.SingleNum  = 0;
+    //TagProcessTag.CurReadCnt = 0;
+    //TagProcessTag.MaxReadCnt = 0;
+    TagProcessTag.AllTagsNum = 0;
 }
 //respond to pc
 void RespGetTagOverCmdToPC(void)
@@ -139,9 +154,9 @@ void RespGetTagOverCmdToPC(void)
     u8  tx[8];
     u32 val;
     
-    //ff   01    a0   00  00 amount   00    00 盘点结束   
-    tx[FR_HEAD] = FIX_HEAD;
-    tx[FR_LEN] = 1;
+    //ff   01    a0   00  00 amount   00    00  盘点结束   
+    tx[FR_HEAD] = PRI_HEAD;
+    tx[1] = 1;
     tx[FR_CMD] = PRI_CMD_READ;
     tx[FR_STA1] = 0; 
     tx[FR_STA2] = 0; 
@@ -172,9 +187,9 @@ void Uart1Process(void)
         if(Uart1ProcessTag.RxBuf[FI_CMD] == PRI_CMD_READ){
             
             // 1 for reader盘点标签
-            if(Uart1ProcessTag.RxBuf[FI_DATA] == 0){   
+            if(Uart1ProcessTag.RxBuf[FR_CMD+1] == 0){   
                 uart2_send_buff((u8*)ReadCmd0,sizeof(ReadCmd0)) ;           
-            }else if(Uart1ProcessTag.RxBuf[FI_DATA] == 1){   
+            }else if(Uart1ProcessTag.RxBuf[FR_CMD+1] == 1){   
                 uart2_send_buff((u8*)ReadCmd1,sizeof(ReadCmd1)) ;  
                              
             }else{
@@ -189,19 +204,17 @@ void Uart1Process(void)
              u8 ClrRespCmd[8]={0xff, 0x00,0xa2,0x00,0x00,0x11,0x68,};
             uart1_send_buff(ClrRespCmd, 7);  
             
-            //2 action
-            val =  TagProcessTag.SingleTagLen;
+            //2 clear buf action
+           // val =  TagProcessTag.SingleTagLen;
             memset((char*)&TagProcessTag, 0, sizeof(struct  TagProcessStruct ));
-            TagProcessTag.SingleTagLen = val &0xffff;  
-            
-            //3 for reader
-            ClearReader();
+            TagProcessTag.SingleTagLen = 0;  
+                
             
         // PRI_CMD_GET_RESULT ?
         }else if(Uart1ProcessTag.RxBuf[FI_CMD] == PRI_CMD_GET_RESULT){
             
             //1 respond for pc
-            SendResCmd[FR_HEAD] = FIX_HEAD;
+            SendResCmd[FR_HEAD] = PRI_HEAD;
             SendResCmd[FR_LEN] = 1;
             SendResCmd[FR_CMD] = PRI_CMD_GET_RESULT;
             SendResCmd[FR_STA1] = 0;
@@ -244,7 +257,7 @@ void tagsAppend(char * pData)
     
     
     if(TagProcessTag.AllTagsNum == 0){      //first time all of valid
-        memcpy((char*)(&TagProcessTag.AllTags[TagProcessTag.AllTagsNum * TagProcessTag.SingleTagLen]), 
+        memcpy((char*)(&TagProcessTag.AllTags[0]), 
                        pData,
                        TagProcessTag.SingleTagLen);
        TagProcessTag.AllTagsNum++;
@@ -276,25 +289,20 @@ void tagsProcess(char * pData)
     
     if(CMD_GET_RESULT == pData[FR_CMD] ){
         
-        if(  pData[FR_LEN] < 5 ){ // read over？
+        if(  pData[FI_PLLSB] <= 0x0a ){ // read over？ lenth of epc > 4(10-6) bytes
             TagProcessTag.SingleNum = 0;
             return;
         }
         //start only calculate one times
         if(TagProcessTag.SingleTagLen == 0){ 
-            TagProcessTag.SingleTagLen = pData[FR_TAG_LEN]<<8 | pData[FR_TAG_LEN+1];
-            TagProcessTag.SingleTagLen = (TagProcessTag.SingleTagLen-0x20)>>3;            
+            TagProcessTag.SingleTagLen = pData[FI_PLLSB];         
         }
-        TagProcessTag.SingleNum = pData[FR_NUBS]<<8 | pData[FR_NUBS+1];
+        
         if(TagProcessTag.SingleNum > 100){
             uart1_send_char(ERROR_EPC_NUMBER_OVER);
           return;
         }
-        
-        for(i=0;i<TagProcessTag.SingleNum;i++){
-            tagsAppend(pData+FR_TAG_DATA+(i*(TagProcessTag.SingleTagLen+6)));
-        }
-        
+        tagsAppend( &pData[FI_EPC]);       
     }
 
 }
