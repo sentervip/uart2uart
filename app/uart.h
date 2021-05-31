@@ -7,6 +7,8 @@
 #include "misc.h"
 #include <stdio.h>
 
+#define   TRUE   1
+#define   FALSE   0
 extern u8 buf3[5];
 /******************************************************************************* 
 * å‡æ•å        : fputc 

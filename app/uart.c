@@ -19,17 +19,20 @@ void USART1_IRQHandler(void)
 {  
     USART_ClearFlag(USART1,USART_FLAG_TC);  
     if(USART_GetITStatus(USART1,USART_IT_RXNE)!=Bit_RESET)//检查指定的USART中断发生与否  
-    {   
-        
-        //rx data
+    {           
+        //1rx data
         Uart1ProcessTag.RxBuf[Uart1ProcessTag.RxCnt++] = USART_ReceiveData(USART1);  
-        
-         //is head
-        if(Uart1ProcessTag.RxBuf[FR_HEAD] != PRI_HEAD){
-            Uart1ProcessTag.RxCnt = 0; //reset and throw it     
+			  //2 is head ?
+			  if(Uart1ProcessTag.RxBuf[FP_HEAD] != PRI_FIX_HEAD ){
+				    Uart1ProcessTag.RxCnt = 0;
+					  return;
+				}			
+         //3 time out
+        if(Uart1ProcessTag.RxCnt == 1){
+            Uart1ProcessTag.TimerOut = Tim2ProcessTag.val; 							
          //rx complement?
-        }else if(Uart1ProcessTag.RxCnt >= FR_CMD &&
-                  Uart1ProcessTag.RxCnt == Uart1ProcessTag.RxBuf[FR_LEN] +FIX_OFFSET){
+        }else if(Uart1ProcessTag.RxCnt >= FP_CMD &&
+            Uart1ProcessTag.RxCnt == Uart1ProcessTag.RxBuf[FP_LEN] +FIX_PRI_OFFSET){
             Uart1ProcessTag.RxCmplet = 1;
             return;
         }else{
@@ -48,17 +51,28 @@ void USART2_IRQHandler(void)
             Uart2ProcessTag.RxBuf[Uart2ProcessTag.RxCnt++] = USART_ReceiveData(USART2);  
             
             
+			       //3 time out
+             if(Uart1ProcessTag.RxCnt == 1){
+                Uart2ProcessTag.TimerOut = Tim2ProcessTag.val; 							
+                
+             }
             //is head
-            if(Uart2ProcessTag.RxBuf[FR_HEAD] != FIX_HEAD){
-                Uart2ProcessTag.RxCnt = 0; //reset and throw it     
+            if(Uart2ProcessTag.RxBuf[FR_HEAD] != FR_FIX_HEAD){
+                Uart2ProcessTag.RxCnt = 0; 
+							  return;
                 
             //rx complement?
-            }else if(Uart2ProcessTag.RxCnt > FR_CMD && Uart2ProcessTag.RxCnt == (Uart2ProcessTag.RxBuf[FI_PLLSB] +EPC_LEN_OFFSET)){
+            }else if(Uart2ProcessTag.RxCnt > FR_PLLSB &&
+  						Uart2ProcessTag.RxCnt == (Uart2ProcessTag.RxBuf[FR_PLLSB] + FIX_FR_OFFSET)
+						  && Uart2ProcessTag.RxBuf[FR_CMD] == 0x22
+						  && Uart2ProcessTag.RxBuf[FR_TYPE] == 0x02
+						  ){
                // if(Uart2ProcessTag.RxBuf[FR_STA1] + Uart2ProcessTag.RxBuf[FR_STA2+1] != 0){                 
                //     memset(Uart2ProcessTag.RxBuf, 0, Uart2ProcessTag.RxCnt);
                //     Uart1ProcessTag.RxCnt = 0;
                // }else{
                     Uart2ProcessTag.RxCmplet = 1;
+								    TagProcessTag.SysMode = SYS_READING ;
                 //}
                 return;
             }else{

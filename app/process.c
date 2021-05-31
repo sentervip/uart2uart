@@ -15,9 +15,9 @@ void TIM2_IRQHandler(void)
     if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET)
     {
         TIM_ClearITPendingBit(TIM2,TIM_IT_Update);
-        uart1_send_char(0xA5); 
-        TagProcessTag.TimerOut = 1;
-        TIM_Cmd(TIM2, DISABLE);     
+        //uart1_send_char(0xA5);  // debug
+        Tim2ProcessTag.val++;  
+        //TIM_Cmd(TIM2, DISABLE);    			
     }
 }
 void TIM2_ConfigRun(void)
@@ -88,7 +88,6 @@ void NVIC_Configuration(void)
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
 }
-#ifndef QM100
 /* CRC16   */
 void CRC_calcCrc8(unsigned short int *crcReg, unsigned short int poly, unsigned short int u8Data)
 {
@@ -111,7 +110,7 @@ void CRC_calcCrc8(unsigned short int *crcReg, unsigned short int poly, unsigned 
 }
 
 /* CRC16 string */
-unsigned short int CalcCRC(unsigned char *buf, unsigned char len)
+unsigned short int CalcCRC16(unsigned char *buf, unsigned char len)
 {
     unsigned short calcCrc = MSG_CRC_INIT;
     unsigned char  i;
@@ -122,7 +121,7 @@ unsigned short int CalcCRC(unsigned char *buf, unsigned char len)
     }
     return calcCrc;
 }
-#else
+
 /**
 * for QM100/M100 reader
 * checksum 为type到最后一个指令参数parameter累加和，并只取累加和最低字节LSB
@@ -138,7 +137,7 @@ unsigned short int CalcCRC(unsigned char *uBuff,unsigned char uBuffLen)
   }
 	return uSum &=0x00ff;
 }
-#endif
+
 
 //clr for reader
 void ClearReader(void)
@@ -154,24 +153,26 @@ void RespGetTagOverCmdToPC(void)
     u8  tx[8];
     u32 val;
     
-    //ff   01    a0   00  00 amount   00    00  盘点结束   
-    tx[FR_HEAD] = PRI_HEAD;
+    //ff   01    a0   amount   00    00  盘点结束   
+    tx[FR_HEAD] = PRI_FIX_HEAD;
     tx[1] = 1;
-    tx[FR_CMD] = PRI_CMD_READ;
-    tx[FR_STA1] = 0; 
-    tx[FR_STA2] = 0; 
-    tx[FR_DATA] = TagProcessTag.AllTagsNum; 
-    val = CalcCRC((char*)&tx[FR_LEN],5);
+    tx[FP_CMD] = PRI_CMD_READ;
+    tx[FP_DATA] = TagProcessTag.AllTagsNum; 
+    val = CalcCRC((char*)&tx[FP_LEN],5);
     tx[6] = val>>8;
     tx[7] = val&0xff;
     uart1_send_buff(tx, 8);  
 }
 void Uart1Process(void)
 {
-    u8 SendResCmd[10];
-    u32 val = 0;
+    //u8 SendResCmd[10];
+   u16 val = 0;
     
-    //uart1 process
+   
+	   //3 time out
+     if( abs(Uart1ProcessTag.TimerOut - Tim2ProcessTag.val) > 2){		
+            Uart1ProcessTag.RxCnt = 0;	
+		 }
     if(Uart1ProcessTag.RxCmplet ){  
         
         //1 is busy?
@@ -184,53 +185,47 @@ void Uart1Process(void)
         
         
         //2 is CMD_READ ?
-        if(Uart1ProcessTag.RxBuf[FI_CMD] == PRI_CMD_READ){
+        if(Uart1ProcessTag.RxBuf[FP_CMD] == PRI_CMD_READ){
             
-            // 1 for reader盘点标签
-            if(Uart1ProcessTag.RxBuf[FR_CMD+1] == 0){   
-                uart2_send_buff((u8*)ReadCmd0,sizeof(ReadCmd0)) ;           
-            }else if(Uart1ProcessTag.RxBuf[FR_CMD+1] == 1){   
+            // 1 read EPC
+            if(Uart1ProcessTag.RxBuf[FP_DATA] == 0x01){   
                 uart2_send_buff((u8*)ReadCmd1,sizeof(ReadCmd1)) ;  
                              
             }else{
-                uart2_send_buff((u8*)ReadCmd2,sizeof(ReadCmd2));                 
+                u8 SendResCmd[6] = {0xff,0x01,0xa0,0x0,0x1d,0xae};
+							  uart1_send_buff((u8*)SendResCmd,sizeof(SendResCmd)) ;
+                uart2_send_buff((u8*)ReadCmd0,sizeof(ReadCmd0)) ;                 
             }
               
                               
         //is PRI_CMD_CLR_RESULT ?
-        }else if(Uart1ProcessTag.RxBuf[FI_CMD] == PRI_CMD_CLR_RESULT){  
+        }else if(Uart1ProcessTag.RxBuf[FP_CMD] == PRI_CMD_CLR_RESULT){  
             
             //1 for pc
-             u8 ClrRespCmd[8]={0xff, 0x00,0xa2,0x00,0x00,0x11,0x68,};
-            uart1_send_buff(ClrRespCmd, 7);  
+             u8 ClrRespCmd[]={0xff, 0x00,0xa2,0x11,0x68};
+            uart1_send_buff(ClrRespCmd, sizeof(ClrRespCmd));  
             
             //2 clear buf action
-           // val =  TagProcessTag.SingleTagLen;
             memset((char*)&TagProcessTag, 0, sizeof(struct  TagProcessStruct ));
-            TagProcessTag.SingleTagLen = 0;  
+            //TagProcessTag.SingleTagLen = 0;  
                 
             
         // PRI_CMD_GET_RESULT ?
-        }else if(Uart1ProcessTag.RxBuf[FI_CMD] == PRI_CMD_GET_RESULT){
-            
+        }else if(Uart1ProcessTag.RxBuf[FP_CMD] == PRI_CMD_GET_RESULT){
+            u8 SendResCmd[6] = {0xff,0x01,0xa1,0x0,0x1d,0xae};
             //1 respond for pc
-            SendResCmd[FR_HEAD] = PRI_HEAD;
-            SendResCmd[FR_LEN] = 1;
-            SendResCmd[FR_CMD] = PRI_CMD_GET_RESULT;
-            SendResCmd[FR_STA1] = 0;
-            SendResCmd[FR_STA2] = 0;
-            SendResCmd[FR_DATA] = TagProcessTag.AllTagsNum;        
-            val = CalcCRC((char*)&SendResCmd[FR_LEN],5);
-            SendResCmd[6] = val>>8;
-            SendResCmd[7] = val&0xff;
-            uart1_send_buff(SendResCmd,8); 
+            SendResCmd[FP_DATA] = TagProcessTag.AllTagsNum;        
+            val = CalcCRC16((char*)&SendResCmd[FP_LEN],3);
+						SendResCmd[4] = val >>8;
+						SendResCmd[5] = val & 0xff;
+            uart1_send_buff(SendResCmd,SendResCmd[FP_LEN]+ 5); 
             
         //reset cmd 
-        }else if(Uart1ProcessTag.RxBuf[FI_CMD] == PRI_CMD_RESET_RESULT){
+        }else if(Uart1ProcessTag.RxBuf[FP_CMD] == PRI_CMD_RESET_RESULT){
             
             //respond for pc  
-            u8 ResetRespCmd[8]={0xff, 0x00,0xaa,0x00,0x00,0x90,0x60,};
-            uart1_send_buff(ResetRespCmd,7); 
+            u8 ResetRespCmd[5]={0xff, 0x00,0xaa,0x1d,0xa5};
+            uart1_send_buff(ResetRespCmd,sizeof(ResetRespCmd)); 
             for(u32 i=0;i<9000;i++){
                 ;;
             }
@@ -251,13 +246,13 @@ void Uart1Process(void)
 *
 */
 void tagsAppend(char * pData)
-{
+{    
     int i=0;
     int j=0;
     
     
     if(TagProcessTag.AllTagsNum == 0){      //first time all of valid
-        memcpy((char*)(&TagProcessTag.AllTags[0]), 
+        memcpy((char*)(&TagProcessTag.AllTags[TagProcessTag.AllTagsNum * TagProcessTag.SingleTagLen]), 
                        pData,
                        TagProcessTag.SingleTagLen);
        TagProcessTag.AllTagsNum++;
@@ -277,6 +272,8 @@ void tagsAppend(char * pData)
              TagProcessTag.AllTagsNum++;
          }
     }
+         
+    
 
 }
 /**
@@ -289,20 +286,20 @@ void tagsProcess(char * pData)
     
     if(CMD_GET_RESULT == pData[FR_CMD] ){
         
-        if(  pData[FI_PLLSB] <= 0x0a ){ // read over？ lenth of epc > 4(10-6) bytes
+        if(  pData[FP_HEAD] <= 0x0a ){ // read over？ lenth of epc > 4(10-6) bytes
             TagProcessTag.SingleNum = 0;
             return;
         }
         //start only calculate one times
         if(TagProcessTag.SingleTagLen == 0){ 
-            TagProcessTag.SingleTagLen = pData[FI_PLLSB];         
+            TagProcessTag.SingleTagLen = (pData[FR_PLLSB] + FIX_FR_OFFSET) - 12;         
         }
         
         if(TagProcessTag.SingleNum > 100){
             uart1_send_char(ERROR_EPC_NUMBER_OVER);
           return;
         }
-        tagsAppend( &pData[FI_EPC]);       
+        tagsAppend( &pData[FR_EPC]);       
     }
 
 }

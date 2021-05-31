@@ -6,16 +6,17 @@
 #include "process.h"
 
 // 'X'  is no Byte;
-// format: CMD           SOF  LEN   CMD  STA  DATA CRCH  CRCL
-//private  ReadCmd       ff   01    a0   X    05   00    00
-//         Respond       ff   01    a0   0    05   00    00
-//private  GetCmd        ff   01    a1   X    05   00    00
-//         Respond       ff   01    a1   0    20   00    00
-//private  ClrCmd        ff   00    a2   X    X   00    00
-//         Respond       ff   00    a1   0    X   00    00
-//private  RESETCmd      ff   00    aa   X    X   00    00
-//         Respond       ff   00    aa   0    X   00    00
-u8 BusyCmd[6] =        {0xFF,0x00, PRI_CMD_BUSY, 0x00, 0xF4, 0x22};
+//CRC16: LEN--DATA 之间的bytes 计算CalcCRC16值
+// format: CMD           SOF  LEN   CMD  DATA CRCH  CRCL
+//private  ReadCmd       ff   01    a0   0    00    00
+//         Respond       ff   01    a0   0    00    00
+//private  GetCmd        ff   01    a1   05   00    00
+//         Respond       ff   01    a1   20   00    00
+//private  ClrCmd        ff   00    a2   X    00    00
+//         Respond       ff   00    a2   X    00    00
+//private  RESETCmd      ff   00    aa   X    00    00
+//         Respond       ff   00    aa   X    00    00
+u8 BusyCmd[] =        {0xFF,0x00, PRI_CMD_BUSY, 0xF4, 0x22};
 u8 TxCmd[12] = {0xFF,0x00};
 struct  Uart1ProcessStruct  Uart1ProcessTag;
 struct  Uart2ProcessStruct  Uart2ProcessTag;
@@ -42,7 +43,7 @@ u32 iTmp;
 RCC_Configuration();
 NVIC_Configuration();
 TIM2_ConfigRun();
-TIM_Cmd(TIM2, DISABLE);
+//TIM_Cmd(TIM2, DISABLE);
 uart1_init(115200);
 uart2_init(115200);
 
@@ -52,24 +53,24 @@ memset((char*)&Tim2ProcessTag, 0, sizeof(struct  Tim2ProcessStruct ));
 memset((char*)&TagProcessTag, 0, sizeof(struct  TagProcessStruct ));
 TagProcessTag.SysMode = SYS_FORWARD; //for test
 //test();
-uart1_send_char(0x12); // start flag
-uart2_send_char(0x23);
+//uart1_send_char(0x12); // start flag
+//uart2_send_char(0x23);
 while(1){
 
 	//uart1 process  ;to pc
    Uart1Process();
     
-   //uart2 process; to reader
+   //uart2 process; to reader; [get echo cmd 22 && type=2]
    if( TagProcessTag.SysMode == SYS_READING){
         if(Uart2ProcessTag.RxCmplet){       
-            if(Uart2ProcessTag.RxBuf[FI_TYPE] == CMD_TYPE &&
-						  	Uart2ProcessTag.RxBuf[FI_CMD] == CMD_GET_RESULT){  
+            if(Uart2ProcessTag.RxBuf[FR_TYPE] == FR_FIX_NOTIFY_TYPE &&
+						  	Uart2ProcessTag.RxBuf[FP_CMD] == FR_FIX_CMD_MULTI_READ_ECHO){  
                 
                 tagsProcess(Uart2ProcessTag.RxBuf);
                 if(TagProcessTag.SingleNum == 0){ // get tags over
                     
                     //1 for pc                     
-                    RespGetTagOverCmdToPC();                    
+                   // RespGetTagOverCmdToPC();                    
                     
                     //2 for reader
                     //ClearReader();
@@ -84,10 +85,13 @@ while(1){
             Uart2ProcessTag.RxCmplet = 0;               
             Uart2ProcessTag.RxCnt = 0;  
         }
-    }else{
+    }
+	 #if 0  // not support frame forward
+		else{
         if(Uart2ProcessTag.RxCmplet){   
-            if(Uart2ProcessTag.RxBuf[FR_CMD] == CMD_READ){
+            if(Uart2ProcessTag.RxBuf[FR_CMD] == FR_FIX_CMD_MULTI_READ_ECHO){
                 
+							/*
                 // 1 for reader
                 TagProcessTag.CurReadCnt = 0;
                 TagProcessTag.MaxReadCnt = Uart1ProcessTag.RxBuf[FR_DATA];
@@ -101,11 +105,12 @@ while(1){
                 TxCmd[6] = 0xF4;
                 TxCmd[7] = 0X22;
                 uart2_send_buff(TxCmd, 8);
+							*/
                 TagProcessTag.SysMode = SYS_READING;
                 
-            }else if(Uart2ProcessTag.RxBuf[FR_CMD] == CMD_CLR_RESULT ){
+            //}else if(Uart2ProcessTag.RxBuf[FR_CMD] == CMD_CLR_RESULT ){
                      //|| Uart2ProcessTag.RxBuf[FR_CMD] == CMD_READ){
-                ;//throw it
+              //  ;//throw it
             }else{ //forward
                 uart1_send_buff(Uart2ProcessTag.RxBuf, Uart2ProcessTag.RxCnt);
                 memset(Uart2ProcessTag.RxBuf, 0, Uart2ProcessTag.RxCnt);
@@ -114,6 +119,7 @@ while(1){
             Uart2ProcessTag.RxCnt = 0;
         }
     }
+		#endif
 }
 }
 

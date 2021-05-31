@@ -5,20 +5,21 @@
 #include "stm32f10x_usart.h"
 #include "stm32f10x_rcc.h"
  
-//standerr cmd
+//reader frame  define
+#define  FR_FIX_HEAD  0xBB
+#define  FR_FIX_NOTIFY_TYPE  0x02
+#define  FR_FIX_CMD_MULTI_READ_ECHO  0x22
 
-#define  FIX_HEAD  0xBB
-#define  CMD_TYPE  0x02
-#define  CMD_READ  0x22
 #define  CMD_GET_RESULT  0x22
 #define  CMD_CLR_RESULT  0x2A
 #define MSG_CRC_INIT 0xFFFF
 #define MSG_CCITT_CRC_POLY 0x1021
-#define FIX_OFFSET  5 // Length of frame = PLMSB>>7+PLLSB+ 7
-#define EPC_LEN_OFFSET  7
+
+#define FIX_PRI_OFFSET  5   //Length of frame = LEN + 5
+#define FIX_FR_OFFSET  7 // Length of frame = PLMSB>>7+PLLSB+ 7
 
 //private cmd
-#define  PRI_HEAD  0xff  //private HEAD
+#define  PRI_FIX_HEAD  0xff  //private HEAD
 #define  PRI_CMD_READ  0xA0
 #define  PRI_CMD_GET_RESULT  0xA1
 #define  PRI_CMD_CLR_RESULT  0xA2
@@ -29,27 +30,27 @@
 #define  ERROR_EPC_LEN      0xE1
 #define  ERROR_EPC_NUMBER_OVER      0xE2
 
-//byte index of frame 27
-typedef enum FrameIndex{
-FI_HEAD=0,
-FI_TYPE,
-FI_CMD,
-FI_PLMSB,//PL MSB
-FI_PLLSB, //PL LSB
-FI_PARA, //parameter
-FI_EPC= 8 // index of epc 	
-}emFrameIndex;
-//byte index of respond frame 27
-typedef enum FrameRespondIndex{
-    FR_HEAD=0,
-    FR_LEN,
-    FR_CMD,
-    FR_STA1,
-    FR_STA2,
-    FR_DATA
-}emFrameRespIndex;
+//byte index of private frame from PC
+typedef enum FramePriIndex{
+    FP_HEAD=0,
+    FP_LEN,
+    FP_CMD,
+    FP_DATA
+}emFramePriIndex;
+
+//byte index of Reader's frame  cmd=27
+typedef enum FrameReaderIndex{
+FR_HEAD=0,
+FR_TYPE,
+FR_CMD,
+FR_PLMSB,//PL MSB
+FR_PLLSB, //PL LSB
+FR_PARA, //parameter
+FR_EPC= 8, // index of epc 	
+}emFrameReaderIndex;
+
 typedef enum SysMode{
-    SYS_FORWARD=0,//正常转发状态
+    SYS_FORWARD=0,//正常转发状态,由其中的私有命令触发 进入其它状态
     SYS_READING,  //盘点标签状态
 
 }emSysMode;
@@ -68,10 +69,12 @@ struct  Uart1ProcessStruct{
     u8 RxBuf[40];
     u32 RxCmplet;
     u32 RxCnt;
+	  u16 TimerOut;
         
 };
 struct  Uart2ProcessStruct{
     u8 RxBuf[280];
+	  u16 TimerOut;
     u32 ReadCnt;
     u32 RxCmplet;
     u32 RxCnt;
@@ -79,11 +82,7 @@ struct  Uart2ProcessStruct{
 
 };
 struct  Tim2ProcessStruct{
-    u32 run;
-    u32 timeoutCnt;
-    u16 val;
-    u16 reserve;
-    
+    u16 val;    
 };
 
 extern u8 BusyCmd[6];
