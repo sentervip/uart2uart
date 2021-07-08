@@ -52,7 +52,7 @@ void USART2_IRQHandler(void)
             
             
 			       //3 time out
-             if(Uart1ProcessTag.RxCnt == 1){
+             if(Uart2ProcessTag.RxCnt == 1){
                 Uart2ProcessTag.TimerOut = Tim2ProcessTag.val; 							
                 
              }

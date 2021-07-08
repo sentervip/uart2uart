@@ -75,11 +75,8 @@ struct  Uart1ProcessStruct{
 struct  Uart2ProcessStruct{
     u8 RxBuf[280];
 	  u16 TimerOut;
-    u32 ReadCnt;
     u32 RxCmplet;
     u32 RxCnt;
-    
-
 };
 struct  Tim2ProcessStruct{
     u16 val;    
@@ -98,6 +95,7 @@ extern void TIM2_IRQHandler(void);
 void ClearReader(void);
 void RespGetTagOverCmdToPC(void);
 void Uart1Process(void);
+void Uart2Process(void);
 void tagsProcess(char * pData);
 extern u16 CalcCRC(u8 *msgbuf,u8 msglen);
 #endif

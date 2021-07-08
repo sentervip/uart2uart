@@ -241,6 +241,41 @@ void Uart1Process(void)
         Uart1ProcessTag.RxCnt = 0;          
     }
 }
+void Uart2Process(void)
+{
+	//uart2 process; to reader; [get echo cmd 22 && type=2]
+	
+	//time out
+	if( abs(Uart2ProcessTag.TimerOut - Tim2ProcessTag.val) > 2){		
+		Uart2ProcessTag.RxCnt = 0;	
+	}
+	
+	if( TagProcessTag.SysMode == SYS_READING){
+        if(Uart2ProcessTag.RxCmplet){       
+            if(Uart2ProcessTag.RxBuf[FR_TYPE] == FR_FIX_NOTIFY_TYPE &&
+					Uart2ProcessTag.RxBuf[FP_CMD] == FR_FIX_CMD_MULTI_READ_ECHO){  
+                
+                tagsProcess(Uart2ProcessTag.RxBuf);
+                if(TagProcessTag.SingleNum == 0){ // get tags over
+                    
+                    //1 for pc                     
+					// RespGetTagOverCmdToPC();                    
+                    
+                    //2 for reader
+                    //ClearReader();
+                    TagProcessTag.SysMode = SYS_FORWARD;
+                }
+            }else{
+                ;//throw it;
+                //uart1_send_buff(Uart2ProcessTag.RxBuf, Uart2ProcessTag.RxCnt);
+				// memset(Uart2ProcessTag.RxBuf, 0, Uart2ProcessTag.RxCnt);
+				// Uart2ProcessTag.RxCnt = 0;
+            }
+            Uart2ProcessTag.RxCmplet = 0;               
+            Uart2ProcessTag.RxCnt = 0;  
+        }
+    }
+}
 /**
 *  single tags and append to tagsBuf
 *

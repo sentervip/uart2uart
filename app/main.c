@@ -57,37 +57,13 @@ TagProcessTag.SysMode = SYS_FORWARD; //for test
 //uart2_send_char(0x23);
 while(1){
 
-	//uart1 process  ;to pc
+	//pc receive process  
    Uart1Process();
-    
-   //uart2 process; to reader; [get echo cmd 22 && type=2]
-   if( TagProcessTag.SysMode == SYS_READING){
-        if(Uart2ProcessTag.RxCmplet){       
-            if(Uart2ProcessTag.RxBuf[FR_TYPE] == FR_FIX_NOTIFY_TYPE &&
-						  	Uart2ProcessTag.RxBuf[FP_CMD] == FR_FIX_CMD_MULTI_READ_ECHO){  
-                
-                tagsProcess(Uart2ProcessTag.RxBuf);
-                if(TagProcessTag.SingleNum == 0){ // get tags over
-                    
-                    //1 for pc                     
-                   // RespGetTagOverCmdToPC();                    
-                    
-                    //2 for reader
-                    //ClearReader();
-                    TagProcessTag.SysMode = SYS_FORWARD;
-                }
-            }else{
-                ;//throw it;
-                //uart1_send_buff(Uart2ProcessTag.RxBuf, Uart2ProcessTag.RxCnt);
-               // memset(Uart2ProcessTag.RxBuf, 0, Uart2ProcessTag.RxCnt);
-               // Uart2ProcessTag.RxCnt = 0;
-            }
-            Uart2ProcessTag.RxCmplet = 0;               
-            Uart2ProcessTag.RxCnt = 0;  
-        }
-    }
+   
+   //reader process
+   Uart2Process();  
+
 	 #if 0  // not support frame forward
-		else{
         if(Uart2ProcessTag.RxCmplet){   
             if(Uart2ProcessTag.RxBuf[FR_CMD] == FR_FIX_CMD_MULTI_READ_ECHO){
                 
